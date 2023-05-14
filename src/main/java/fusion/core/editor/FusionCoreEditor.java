@@ -2,20 +2,19 @@ package fusion.core.editor;
 
 import com.fusion.core.GlfwWindow;
 import com.fusion.core.engine.CoreEngine;
-import com.fusion.core.engine.Debug;
 import com.fusion.core.engine.Global;
 import com.fusion.core.engine.plugin.Plugin;
 import com.fusion.core.engine.plugin.UnmodifiableString;
 import com.fusion.core.engine.renderer.RendererReady;
-import imgui.ImFontConfig;
-import imgui.ImFontGlyphRangesBuilder;
-import imgui.ImGui;
-import imgui.ImGuiIO;
+import imgui.*;
 import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiConfigFlags;
 import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
-import open.gl.OpenGlRenderer;
+import open.gl.*;
+import open.gl.gameobject.Mesh;
+import open.gl.gameobject.MeshInstance;
+import open.gl.shaders.lights.DirLight;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -23,12 +22,15 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
-import static imgui.flag.ImGuiWindowFlags.*;
 import static org.lwjgl.opengl.GL30.*;
 
-public class FusionCoreEditor implements Plugin {
+public class FusionCoreEditor extends Plugin {
 
     private GlfwWindow window;
     private OpenGlRenderer renderer;
@@ -36,8 +38,18 @@ public class FusionCoreEditor implements Plugin {
     private final ImGuiImplGlfw imGuiGLFW = new ImGuiImplGlfw();
     private final ImGuiImplGl3 imGuiGl3 = new ImGuiImplGl3();
 
+    private Viewport viewport;
+
     @Override
     public void init(CoreEngine coreEngine) {
+        String jarFilePath = FusionCoreEditor.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+
+        try(JarFile jarFile = new JarFile(jarFilePath)){
+            jarFile.stream().map(JarEntry::getName).forEach(System.out::println);
+        }catch (IOException e){
+            e.printStackTrace();
+        }
+
         coreEngine.addRendererReadyCallback(new RendererReady() {
             @Override
             public void onReady() {
@@ -62,33 +74,24 @@ public class FusionCoreEditor implements Plugin {
                 fontConfig.setMergeMode(true);
 
                 final short[] glyphRanges = rangesBuilder.buildRanges();
-                io.getFonts().addFontFromMemoryTTF(loadFromResources("Roboto-Bold.ttf"), 14, fontConfig, glyphRanges); // cyrillic glyphsio.getFonts().build();
+                io.getFonts().addFontFromMemoryTTF(loadFromResources(getId() + File.separator + "Roboto-Bold.ttf"), 14, fontConfig, glyphRanges); // cyrillic glyphsio.getFonts().build();
                 io.getFonts().build();
 
                 fontConfig.destroy();
 
                 imGuiGLFW.init(window.getWindowID(), true);
                 imGuiGl3.init("#version 330");
+
+                viewport = new Viewport(window);
             }
         });
     }
 
-    private byte[] loadFromResources(String path){
-        try{
-            File file = new File(Global.getAssetDir().getAbsolutePath() + File.separator + path);
-            if(!file.exists()){
-                throw new FileNotFoundException("File Not Found");
-            }
-            return Files.readAllBytes(Paths.get(file.toURI()));
-        }catch (IOException e){
-            throw new RuntimeException(e);
-        }
-    }
-
     @Override
     public void update() {
-        glClearColor(1, 0, 1, 1);
-        glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+
+        glClear(GL_COLOR_BUFFER_BIT);
         imGuiGLFW.newFrame();
         ImGui.newFrame();
 
@@ -97,23 +100,34 @@ public class FusionCoreEditor implements Plugin {
 
         ImGui.getStyle().setWindowPadding(0, 0);
 //        if(ImGui.begin("My Window", NoTitleBar | NoMove | NoResize | NoCollapse | NoBackground)){
-        if(ImGui.begin("Viewport")){
 
-        }
-        ImGui.end();
-
+        viewport.show(renderer);
         ImGui.render();
         imGuiGl3.renderDrawData(ImGui.getDrawData());
     }
 
     @Override
     public void shutdown() {
+        viewport.cleanup();
         ImGui.destroyContext();
     }
 
+    private byte[] loadFromResources(String path){
+        try{
+            File file = new File(Global.getAssetDir().getAbsolutePath() + File.separator + path);
+            if(!file.exists()){
+                throw new FileNotFoundException("File Not Found: " + file);
+            }
+            return Files.readAllBytes(Paths.get(file.toURI()));
+        }catch (IOException e){
+            throw new RuntimeException(e);
+        }
+    }
+
     @Override
-    public UnmodifiableString setId() {
-        return UnmodifiableString.fromString("FusionCoreEditor");
+    public void setId() {
+        id.set("FusionCoreEditor");
+//        return UnmodifiableString.fromString("FusionCoreEditor");
     }
 
     @Override
