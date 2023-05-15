@@ -1,23 +1,39 @@
 package fusion.core.editor;
 
+import com.bulletphysics.collision.shapes.BoxShape;
+import com.bulletphysics.dynamics.RigidBody;
+import com.bulletphysics.linearmath.Transform;
+import com.fusion.core.EventMouseButton;
+import com.fusion.core.GlfwInput;
 import com.fusion.core.GlfwWindow;
 import com.fusion.core.engine.Global;
 import imgui.ImGui;
 import imgui.ImVec2;
+import imgui.extension.imguizmo.ImGuizmo;
+import imgui.extension.imguizmo.flag.Mode;
+import imgui.extension.imguizmo.flag.Operation;
 import open.gl.*;
+import open.gl.gameobject.Component;
 import open.gl.gameobject.Mesh;
 import open.gl.gameobject.MeshInstance;
+import open.gl.gameobject.PhysicsComponent;
+import open.gl.physics.HitResults;
+import open.gl.physics.PhysicsWorld;
 import open.gl.shaders.DepthShader;
 import open.gl.shaders.OpenGlShader;
 import open.gl.shaders.WorldShader;
 import open.gl.shaders.lights.DirLight;
 import open.gl.shaders.lights.PointLight;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
+import javax.vecmath.Quat4f;
 import java.io.File;
 import java.util.*;
 
+import static imgui.flag.ImGuiWindowFlags.*;
+import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_BUFFER_BIT;
 import static org.lwjgl.opengl.GL13.GL_TEXTURE4;
@@ -25,8 +41,15 @@ import static org.lwjgl.opengl.GL13.glActiveTexture;
 
 public class Viewport {
 
+    private PhysicsWorld physicsWorld;
+    private HitResults hitResults;
+    private PhysicsComponent lastHitComponent = null;
+
     private Mesh cube;
+
     Map<Mesh, List<MeshInstance>> instances = new HashMap<>();
+
+    List<Component> components = new ArrayList<>();
 
     private PerspectiveCamera camera;
     private CameraController cameraController;
@@ -44,7 +67,12 @@ public class Viewport {
     private Matrix4f lightSpaceMatrix = new Matrix4f();
     private Matrix4f lightProjectionMatrix = new Matrix4f();
 
+    private float angle = 0;
+
     public Viewport(GlfwWindow window) {
+        physicsWorld = new PhysicsWorld();
+        hitResults = new HitResults();
+
         camera = new PerspectiveCamera(window.getWidth(), window.getHeight(), 70, 0.1f, 1000f);
         cameraController = new CameraController(camera);
         dirLight = new DirLight();
@@ -71,6 +99,28 @@ public class Viewport {
 
         worldShader.bind();
         OpenGlShader.loadMatrix4f(worldShader.getProjection(), camera.getProjectionMatrix());
+
+        GlfwInput.setOnMouseButton(new EventMouseButton() {
+            @Override
+            public void handle(int button, int action, int mods) {
+                if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && !ImGuizmo.isOver()){
+                    double[] cursorPosition = window.getCursorPosition();
+                    physicsWorld.cursorRaycast(cursorPosition[0], cursorPosition[1], window.getWidth(), window.getHeight(), camera.getProjectionMatrix(), worldShader.getViewMatrix(), hitResults);
+
+                    if(hitResults.hitComponent != null && hitResults.hitComponent != lastHitComponent){
+                        lastHitComponent = hitResults.hitComponent;
+                        lastHitComponent.setManipulate(true);
+                    }else{
+                        if(lastHitComponent != null) {
+                            lastHitComponent.getRigidBody().setLinearVelocity(new javax.vecmath.Vector3f(0, 0, 0));
+                            lastHitComponent.getRigidBody().setAngularVelocity(new javax.vecmath.Vector3f(0, 0, 0));
+                            lastHitComponent.setManipulate(false);
+                        }
+                        lastHitComponent = null;
+                    }
+                }
+            }
+        });
 
         whileDepthRendering = new WhileRendering(depthShader) {
             @Override
@@ -107,6 +157,16 @@ public class Viewport {
                 OpenGlShader.loadFloat(worldShader.getUniformLocation("light.linear"), pointLight.linear);
                 OpenGlShader.loadFloat(worldShader.getUniformLocation("light.quadratic"), pointLight.quadratic);
 
+                angle += 0.001;
+                float x = (float) Math.sin(angle);
+                float y = (float) Math.max(-Math.PI, Math.cos(angle)); // This will make the sun rise and set, as it won't go below the horizon
+                float z = (float) Math.cos(angle);
+
+                dirLight.direction.set(x, y, z).normalize();
+                if(angle >= 2 * Math.PI){
+                    angle = (float) -Math.PI;
+                }
+
                 worldShader.updateDirLight(dirLight);
 
                 OpenGlShader.loadFloat(worldShader.getUniformLocation("gamma"), 2.2f);
@@ -121,7 +181,7 @@ public class Viewport {
         Random r = new Random();
         List<MeshInstance> instanceList = new ArrayList<>();
         for (int i = 0; i < 100; i++) {
-            int distance = 100;
+            int distance = 100 / 2;
             int x = r.nextInt(distance) - (distance / 2);
             int y = r.nextInt(distance) - (distance / 2);
             int z = r.nextInt(distance) - (distance / 2);
@@ -130,6 +190,11 @@ public class Viewport {
 
             instance.setPosition(x, y, z);
             instanceList.add(instance);
+
+            javax.vecmath.Vector3f halfExtents = physicsWorld.toPhysicsVector(new Vector3f(instance.getScale().x / 2, instance.getScale().y / 2, instance.getScale().z / 2));
+            BoxShape box = new BoxShape(halfExtents);
+            RigidBody rigidBody = physicsWorld.addShapeToWorld(box, 0.0f, instance.getRotation(), instance.getPosition(), 1.0f);
+            components.add(new PhysicsComponent(rigidBody, instance));
         }
         instances.put(cube, instanceList);
     }
@@ -145,6 +210,7 @@ public class Viewport {
     }
 
     public void show(OpenGlRenderer renderer){
+        physicsWorld.update(1.0f);
         cameraController.update();
         {
             glClearColor(0.53f, 0.81f, 0.98f, 1.0f);
@@ -170,9 +236,61 @@ public class Viewport {
         }
         framebuffer.unbind();
 
-        if(ImGui.begin("Viewport")){
+        for (int i = 0; i < components.size(); i++) {
+            components.get(i).update();
+        }
+
+        if(ImGui.begin("Viewport", NoTitleBar | NoMove | NoResize | NoCollapse | NoBackground)){
             ImVec2 winSize = ImGui.getWindowSize();
             ImGui.image(framebuffer.getTextureId(), winSize.x, winSize.y, 0, 1, 1, 0);
+
+            ImGuizmo.beginFrame();
+            ImGuizmo.setOrthographic(false);
+            ImGuizmo.setEnabled(true);
+            ImGuizmo.setDrawList();
+            ImGuizmo.setRect(ImGui.getWindowPosX(), ImGui.getWindowPosY(), winSize.x, winSize.y);
+
+            if(lastHitComponent != null){
+                lastHitComponent.getRigidBody().activate();
+                MeshInstance instance = lastHitComponent.getInstance();
+                Matrix4f matrix = new Matrix4f();
+                matrix.translate(instance.getPosition());
+                matrix.rotate(instance.getRotation());
+                matrix.scale(instance.getScale());
+
+                float[] viewMatrix = new float[16];
+                viewMatrix = worldShader.getViewMatrix().get(viewMatrix);
+
+                float[] projectionMatrix = new float[16];
+                projectionMatrix = camera.getProjectionMatrix().get(projectionMatrix);
+
+
+                float[] transform = new float[16];
+                transform = matrix.get(transform);
+
+                ImGuizmo.manipulate(viewMatrix, projectionMatrix, transform, Operation.TRANSLATE, Mode.WORLD);
+
+                Matrix4f newTransform = new Matrix4f();
+                newTransform = newTransform.set(transform);
+
+                Vector3f newPosition = new Vector3f();
+                newPosition = newTransform.getTranslation(newPosition);
+
+                Quaternionf newRotation = new Quaternionf();
+                newRotation = newTransform.getNormalizedRotation(newRotation);
+
+                instance.setPosition(newPosition);
+                instance.setRotation(newRotation);
+
+
+                javax.vecmath.Vector3f physicsPosition = physicsWorld.toPhysicsVector(newPosition);
+                javax.vecmath.Quat4f physicsRotation = new Quat4f(newRotation.x, newRotation.y, newRotation.z, newRotation.w);
+
+                com.bulletphysics.linearmath.Transform physicsTransform = new Transform();
+                physicsTransform.set(new javax.vecmath.Matrix4f(physicsRotation, physicsPosition, 1.0f));
+                lastHitComponent.getRigidBody().setWorldTransform(physicsTransform);
+                lastHitComponent.getRigidBody().getMotionState().setWorldTransform(physicsTransform);
+            }
         }
         ImGui.end();
     }
