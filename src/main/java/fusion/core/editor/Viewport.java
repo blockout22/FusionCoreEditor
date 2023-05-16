@@ -7,11 +7,13 @@ import com.fusion.core.EventMouseButton;
 import com.fusion.core.GlfwInput;
 import com.fusion.core.GlfwWindow;
 import com.fusion.core.engine.Global;
+import imgui.ImColor;
 import imgui.ImGui;
 import imgui.ImVec2;
 import imgui.extension.imguizmo.ImGuizmo;
 import imgui.extension.imguizmo.flag.Mode;
 import imgui.extension.imguizmo.flag.Operation;
+import imgui.flag.ImGuiCond;
 import open.gl.*;
 import open.gl.gameobject.Component;
 import open.gl.gameobject.Mesh;
@@ -41,6 +43,8 @@ import static org.lwjgl.opengl.GL13.glActiveTexture;
 
 public class Viewport {
 
+    private GlfwWindow window;
+
     private PhysicsWorld physicsWorld;
     private HitResults hitResults;
     private PhysicsComponent lastHitComponent = null;
@@ -67,9 +71,18 @@ public class Viewport {
     private Matrix4f lightSpaceMatrix = new Matrix4f();
     private Matrix4f lightProjectionMatrix = new Matrix4f();
 
+    private ImVec2 viewportPosition = new ImVec2();
+    private ImVec2 viewportSize = new ImVec2();
+
+    private int operation = Operation.TRANSLATE;
+
+    private boolean performRaycast = false;
+    private boolean mouseConsumed = false;
+
     private float angle = 0;
 
     public Viewport(GlfwWindow window) {
+        this.window = window;
         physicsWorld = new PhysicsWorld();
         hitResults = new HitResults();
 
@@ -104,20 +117,7 @@ public class Viewport {
             @Override
             public void handle(int button, int action, int mods) {
                 if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && !ImGuizmo.isOver()){
-                    double[] cursorPosition = window.getCursorPosition();
-                    physicsWorld.cursorRaycast(cursorPosition[0], cursorPosition[1], window.getWidth(), window.getHeight(), camera.getProjectionMatrix(), worldShader.getViewMatrix(), hitResults);
-
-                    if(hitResults.hitComponent != null && hitResults.hitComponent != lastHitComponent){
-                        lastHitComponent = hitResults.hitComponent;
-                        lastHitComponent.setManipulate(true);
-                    }else{
-                        if(lastHitComponent != null) {
-                            lastHitComponent.getRigidBody().setLinearVelocity(new javax.vecmath.Vector3f(0, 0, 0));
-                            lastHitComponent.getRigidBody().setAngularVelocity(new javax.vecmath.Vector3f(0, 0, 0));
-                            lastHitComponent.setManipulate(false);
-                        }
-                        lastHitComponent = null;
-                    }
+                    performRaycast = true;
                 }
             }
         });
@@ -199,6 +199,29 @@ public class Viewport {
         instances.put(cube, instanceList);
     }
 
+    private void raycast(){
+        double[] cursorPosition = window.getCursorPosition();
+
+        // Convert cursor position to be relative to the viewport window
+        double relativeCursorPositionX = cursorPosition[0] - viewportPosition.x;
+        double relativeCursorPositionY = cursorPosition[1] - viewportPosition.y;
+        physicsWorld.cursorRaycast(relativeCursorPositionX, relativeCursorPositionY, (int) viewportSize.x, (int) viewportSize.y, camera.getProjectionMatrix(), worldShader.getViewMatrix(), hitResults);
+
+        if(hitResults.hitComponent != null && hitResults.hitComponent != lastHitComponent){
+            lastHitComponent = hitResults.hitComponent;
+            lastHitComponent.setManipulate(true);
+        }else{
+            if(lastHitComponent != null) {
+                lastHitComponent.getRigidBody().setLinearVelocity(new javax.vecmath.Vector3f(0, 0, 0));
+                lastHitComponent.getRigidBody().setAngularVelocity(new javax.vecmath.Vector3f(0, 0, 0));
+                lastHitComponent.setManipulate(false);
+            }
+            lastHitComponent = null;
+        }
+
+        performRaycast = false;
+    }
+
     private void calculateDirLightPosition() {
         float distanceFromCenter = 200f;
         Matrix4f lightView = dirLight.getLightViewMatrix(center, distanceFromCenter);
@@ -209,9 +232,13 @@ public class Viewport {
         lightSpaceMatrix = lightProjectionMatrix.mul(lightView, lightSpaceMatrix);
     }
 
+    int flags = NoCollapse | NoMove;
+
     public void show(OpenGlRenderer renderer){
         physicsWorld.update(1.0f);
         cameraController.update();
+
+        depthFrameBuffer.bind();
         {
             glClearColor(0.53f, 0.81f, 0.98f, 1.0f);
             glEnable(GL_DEPTH_TEST);
@@ -221,8 +248,6 @@ public class Viewport {
 
             renderer.render(depthShader, instances, whileDepthRendering);
         }
-        depthFrameBuffer.bind();
-
         depthFrameBuffer.unbind();
         framebuffer.bind();
         {
@@ -240,10 +265,38 @@ public class Viewport {
             components.get(i).update();
         }
 
-        if(ImGui.begin("Viewport", NoTitleBar | NoMove | NoResize | NoCollapse | NoBackground)){
-            ImVec2 winSize = ImGui.getWindowSize();
-            ImGui.image(framebuffer.getTextureId(), winSize.x, winSize.y, 0, 1, 1, 0);
+        ImGui.setNextWindowPos(0, 0, ImGuiCond.Once);
+        ImGui.setNextWindowSize(window.getWidth(), window.getHeight(), ImGuiCond.Once);
 
+        ImGui.getStyle().setWindowPadding(0, 0);
+
+
+        if(ImGui.begin("Viewport", flags)){
+            ImGui.getWindowPos(viewportPosition);
+            ImGui.getWindowSize(viewportSize);
+            ImVec2 winSize = ImGui.getWindowSize();
+            ImVec2 regionAvail = ImGui.getContentRegionAvail();
+
+            float titleBarHeight = ImGui.getFont().getFontSize() + ImGui.getStyle().getFramePadding().y * 2;
+
+            ImGui.setCursorPos(0, titleBarHeight);
+
+
+            float aspectRatio = 1920 / 1080;
+
+            ImVec2 imageSize = new ImVec2();
+            if(regionAvail.x / regionAvail.y > aspectRatio){
+                imageSize.y = regionAvail.y;
+                imageSize.x = regionAvail.y * aspectRatio;
+            }else{
+                imageSize.x = regionAvail.x;
+                imageSize.y = regionAvail.x / aspectRatio;
+            }
+
+
+            ImGui.image(framebuffer.getTextureId(), regionAvail.x, regionAvail.y, 0, 1, 1, 0);
+
+            ImGui.setCursorPos(regionAvail.x, regionAvail.y);
             ImGuizmo.beginFrame();
             ImGuizmo.setOrthographic(false);
             ImGuizmo.setEnabled(true);
@@ -268,7 +321,7 @@ public class Viewport {
                 float[] transform = new float[16];
                 transform = matrix.get(transform);
 
-                ImGuizmo.manipulate(viewMatrix, projectionMatrix, transform, Operation.TRANSLATE, Mode.WORLD);
+                ImGuizmo.manipulate(viewMatrix, projectionMatrix, transform, operation, Mode.WORLD);
 
                 Matrix4f newTransform = new Matrix4f();
                 newTransform = newTransform.set(transform);
@@ -290,6 +343,38 @@ public class Viewport {
                 physicsTransform.set(new javax.vecmath.Matrix4f(physicsRotation, physicsPosition, 1.0f));
                 lastHitComponent.getRigidBody().setWorldTransform(physicsTransform);
                 lastHitComponent.getRigidBody().getMotionState().setWorldTransform(physicsTransform);
+            }
+
+            ImVec2 translateSize = new ImVec2();
+            ImVec2 rotateSize = new ImVec2();
+            ImVec2 scaleSize = new ImVec2();
+
+            ImGui.calcTextSize(translateSize, "Translate");
+            ImGui.calcTextSize(rotateSize, "Rotate");
+            ImGui.calcTextSize(scaleSize, "Scale");
+
+            ImGui.setCursorPos(regionAvail.x - 250, titleBarHeight + 5);
+            ImVec2 cursorPos = ImGui.getCursorPos();
+            //starX, startY, endX, endY, color
+            ImGui.getWindowDrawList().addRectFilled(cursorPos.x - 5, cursorPos.y - 1, regionAvail.x, cursorPos.y + 25, ImColor.floatToColor(0, 0, 0, .8f));
+            // Create the radio buttons
+            if (ImGui.radioButton("Translate", operation == Operation.TRANSLATE)) {
+                operation = Operation.TRANSLATE;
+                performRaycast = false;
+            }
+            ImGui.sameLine();
+            if (ImGui.radioButton("Rotate", operation == Operation.ROTATE)) {
+                operation = Operation.ROTATE;
+                performRaycast = false;
+            }
+            ImGui.sameLine();
+            if (ImGui.radioButton("Scale", operation == Operation.SCALE)) {
+                operation = Operation.SCALE;
+                performRaycast = false;
+            }
+
+            if(performRaycast && ImGui.isWindowHovered()){
+                raycast();
             }
         }
         ImGui.end();

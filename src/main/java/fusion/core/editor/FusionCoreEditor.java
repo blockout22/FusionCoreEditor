@@ -89,19 +89,12 @@ public class FusionCoreEditor extends Plugin {
 
     @Override
     public void update() {
-
-
         glClear(GL_COLOR_BUFFER_BIT);
         imGuiGLFW.newFrame();
         ImGui.newFrame();
 
-        ImGui.setNextWindowPos(0, 0, ImGuiCond.Always);
-        ImGui.setNextWindowSize(window.getWidth(), window.getHeight(), ImGuiCond.Always);
-
-        ImGui.getStyle().setWindowPadding(0, 0);
-//        if(ImGui.begin("My Window", NoTitleBar | NoMove | NoResize | NoCollapse | NoBackground)){
-
         viewport.show(renderer);
+
         ImGui.render();
         imGuiGl3.renderDrawData(ImGui.getDrawData());
     }
