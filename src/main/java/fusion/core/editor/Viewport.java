@@ -75,6 +75,7 @@ public class Viewport {
     private ImVec2 viewportSize = new ImVec2();
 
     private int operation = Operation.TRANSLATE;
+    private int mode = Mode.WORLD;
 
     private boolean performRaycast = false;
     private boolean mouseConsumed = false;
@@ -321,7 +322,7 @@ public class Viewport {
                 float[] transform = new float[16];
                 transform = matrix.get(transform);
 
-                ImGuizmo.manipulate(viewMatrix, projectionMatrix, transform, operation, Mode.WORLD);
+                ImGuizmo.manipulate(viewMatrix, projectionMatrix, transform, operation, mode);
 
                 Matrix4f newTransform = new Matrix4f();
                 newTransform = newTransform.set(transform);
@@ -353,10 +354,21 @@ public class Viewport {
             ImGui.calcTextSize(rotateSize, "Rotate");
             ImGui.calcTextSize(scaleSize, "Scale");
 
-            ImGui.setCursorPos(regionAvail.x - 250, titleBarHeight + 5);
+            ImGui.setCursorPos(regionAvail.x - 300, titleBarHeight + 5);
             ImVec2 cursorPos = ImGui.getCursorPos();
             //starX, startY, endX, endY, color
-            ImGui.getWindowDrawList().addRectFilled(cursorPos.x - 5, cursorPos.y - 1, regionAvail.x, cursorPos.y + 25, ImColor.floatToColor(0, 0, 0, .8f));
+            ImGui.getWindowDrawList().addRectFilled(cursorPos.x - 5, cursorPos.y - 5, regionAvail.x, cursorPos.y + 25, ImColor.floatToColor(0, 0, 0, .8f));
+
+            if(ImGui.button(mode == Mode.WORLD ? "World" : "Local")){
+                performRaycast = false;
+                if(mode == Mode.WORLD){
+                    mode = Mode.LOCAL;
+                }else if(mode == Mode.LOCAL) {
+                    mode = Mode.WORLD;
+                }
+            }
+            ImGui.sameLine();
+
             // Create the radio buttons
             if (ImGui.radioButton("Translate", operation == Operation.TRANSLATE)) {
                 operation = Operation.TRANSLATE;
