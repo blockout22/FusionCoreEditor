@@ -80,6 +80,7 @@ public class Viewport {
     private boolean performRaycast = false;
     private boolean mouseConsumed = false;
 
+    int flags = NoCollapse | NoMove;
     private float angle = 0;
 
     public Viewport(GlfwWindow window) {
@@ -233,8 +234,6 @@ public class Viewport {
         lightSpaceMatrix = lightProjectionMatrix.mul(lightView, lightSpaceMatrix);
     }
 
-    int flags = NoCollapse | NoMove;
-
     public void show(OpenGlRenderer renderer){
         physicsWorld.update(1.0f);
         cameraController.update();
@@ -304,6 +303,31 @@ public class Viewport {
             ImGuizmo.setDrawList();
             ImGuizmo.setRect(ImGui.getWindowPosX(), ImGui.getWindowPosY(), winSize.x, winSize.y);
 
+            float[] viewMatrix = new float[16];
+            viewMatrix = worldShader.getViewMatrix().get(viewMatrix);
+
+            float[] projectionMatrix = new float[16];
+            projectionMatrix = camera.getProjectionMatrix().get(projectionMatrix);
+
+            float[] gridMatrix = new float[16];
+            Matrix4f identity = new Matrix4f();
+            identity.get(gridMatrix);
+
+            //TODO: drawGrid() shouldn't appear ontop of objects that are infront of the grid
+//            ImGuizmo.drawGrid(viewMatrix, projectionMatrix, gridMatrix, 1000);
+
+            float[] size = {200, 200};
+            float[] position = {5, regionAvail.y - (size[1])};
+
+            ImGuizmo.viewManipulate(viewMatrix, 10, position, size, ImColor.floatToColor(0, 0, 0, 0));
+
+            //TODO not create new objects each frame
+            Matrix4f newCamMatrix = new Matrix4f();
+            newCamMatrix.set(viewMatrix);
+            Quaternionf newCameraRot = new Quaternionf().setFromNormalized(newCamMatrix);
+
+            camera.getOrientation().set(newCameraRot);
+
             if(lastHitComponent != null){
                 lastHitComponent.getRigidBody().activate();
                 MeshInstance instance = lastHitComponent.getInstance();
@@ -312,17 +336,12 @@ public class Viewport {
                 matrix.rotate(instance.getRotation());
                 matrix.scale(instance.getScale());
 
-                float[] viewMatrix = new float[16];
-                viewMatrix = worldShader.getViewMatrix().get(viewMatrix);
-
-                float[] projectionMatrix = new float[16];
-                projectionMatrix = camera.getProjectionMatrix().get(projectionMatrix);
-
-
                 float[] transform = new float[16];
                 transform = matrix.get(transform);
 
-                ImGuizmo.manipulate(viewMatrix, projectionMatrix, transform, operation, mode);
+                float[] snap = new float[]{1, 1, 1};
+
+                ImGuizmo.manipulate(viewMatrix, projectionMatrix, transform, operation, mode, snap);
 
                 Matrix4f newTransform = new Matrix4f();
                 newTransform = newTransform.set(transform);
@@ -335,7 +354,6 @@ public class Viewport {
 
                 instance.setPosition(newPosition);
                 instance.setRotation(newRotation);
-
 
                 javax.vecmath.Vector3f physicsPosition = physicsWorld.toPhysicsVector(newPosition);
                 javax.vecmath.Quat4f physicsRotation = new Quat4f(newRotation.x, newRotation.y, newRotation.z, newRotation.w);
