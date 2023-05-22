@@ -33,7 +33,7 @@ public class Properties {
 
                 boolean usingTrn = ImGui.inputFloat3("Translation", translation, "%.3f", ImGuiInputTextFlags.EnterReturnsTrue);
                 boolean usingRot = ImGui.inputFloat3("Rotation", rotation, "%.3f", ImGuiInputTextFlags.EnterReturnsTrue);
-                boolean usingScl = ImGui.inputFloat3("Scale", scale, "%.3f", ImGuiInputTextFlags.EnterReturnsTrue);
+                boolean usingScl = ImGui.inputFloat3("Scale", scale, "%.2f", ImGuiInputTextFlags.EnterReturnsTrue);
 
                 if(usingRot){
                     for (int i = 0; i < 3; i++) {
@@ -53,7 +53,10 @@ public class Properties {
                     Quaternionf newRot = new Quaternionf();
                     newModelMatrix.getNormalizedRotation(newRot);
 
-                    viewport.updateComponent(newPos, newRot);
+                    Vector3f newScale = new Vector3f();
+                    newModelMatrix.getScale(newScale);
+
+                    viewport.updateComponent(newPos, newRot, newScale);
                 }
             }
         }
