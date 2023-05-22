@@ -218,6 +218,7 @@ public class Viewport {
                 lastHitComponent.getRigidBody().setAngularVelocity(new javax.vecmath.Vector3f(0, 0, 0));
                 lastHitComponent.setManipulate(false);
             }
+            System.out.println("Set to null");
             lastHitComponent = null;
         }
 
@@ -265,8 +266,8 @@ public class Viewport {
             components.get(i).update();
         }
 
-        ImGui.setNextWindowPos(0, 0, ImGuiCond.Once);
-        ImGui.setNextWindowSize(window.getWidth(), window.getHeight(), ImGuiCond.Once);
+        ImGui.setNextWindowPos(0, 0, ImGuiCond.FirstUseEver);
+        ImGui.setNextWindowSize(window.getWidth(), window.getHeight(), ImGuiCond.FirstUseEver);
 
         ImGui.getStyle().setWindowPadding(0, 0);
 
@@ -280,7 +281,6 @@ public class Viewport {
             float titleBarHeight = ImGui.getFont().getFontSize() + ImGui.getStyle().getFramePadding().y * 2;
 
             ImGui.setCursorPos(0, titleBarHeight);
-
 
             float aspectRatio = 1920 / 1080;
 
@@ -343,25 +343,7 @@ public class Viewport {
 
                 ImGuizmo.manipulate(viewMatrix, projectionMatrix, transform, operation, mode, snap);
 
-                Matrix4f newTransform = new Matrix4f();
-                newTransform = newTransform.set(transform);
-
-                Vector3f newPosition = new Vector3f();
-                newPosition = newTransform.getTranslation(newPosition);
-
-                Quaternionf newRotation = new Quaternionf();
-                newRotation = newTransform.getNormalizedRotation(newRotation);
-
-                instance.setPosition(newPosition);
-                instance.setRotation(newRotation);
-
-                javax.vecmath.Vector3f physicsPosition = physicsWorld.toPhysicsVector(newPosition);
-                javax.vecmath.Quat4f physicsRotation = new Quat4f(newRotation.x, newRotation.y, newRotation.z, newRotation.w);
-
-                com.bulletphysics.linearmath.Transform physicsTransform = new Transform();
-                physicsTransform.set(new javax.vecmath.Matrix4f(physicsRotation, physicsPosition, 1.0f));
-                lastHitComponent.getRigidBody().setWorldTransform(physicsTransform);
-                lastHitComponent.getRigidBody().getMotionState().setWorldTransform(physicsTransform);
+               updateComponent(transform);
             }
 
             ImVec2 translateSize = new ImVec2();
@@ -375,7 +357,14 @@ public class Viewport {
             ImGui.setCursorPos(regionAvail.x - 300, titleBarHeight + 5);
             ImVec2 cursorPos = ImGui.getCursorPos();
             //starX, startY, endX, endY, color
-            ImGui.getWindowDrawList().addRectFilled(cursorPos.x - 5, cursorPos.y - 5, regionAvail.x, cursorPos.y + 25, ImColor.floatToColor(0, 0, 0, .8f));
+            float winPosX = ImGui.getWindowPosX();
+            float winPosY = ImGui.getWindowPosY();
+            float rectStartX = winPosX + regionAvail.x - 305;
+            float rectStartY = winPosY;
+            float rectEndX = winPosX + regionAvail.x;
+            float rectEndY = winPosY + 50;
+
+            ImGui.getWindowDrawList().addRectFilled(rectStartX, rectStartY, rectEndX, rectEndY, ImColor.rgba(0, 0, 0, .8f));
 
             if(ImGui.button(mode == Mode.WORLD ? "World" : "Local")){
                 performRaycast = false;
@@ -403,11 +392,37 @@ public class Viewport {
                 performRaycast = false;
             }
 
-            if(performRaycast && ImGui.isWindowHovered()){
+            if(performRaycast && ImGui.isWindowHovered() && ImGui.isMouseClicked(0)){
                 raycast();
             }
         }
         ImGui.end();
+    }
+
+    public void updateComponent(Vector3f newPosition, Quaternionf newRotation){
+        lastHitComponent.getInstance().setPosition(newPosition);
+        lastHitComponent.getInstance().setRotation(newRotation);
+
+        javax.vecmath.Vector3f physicsPosition = physicsWorld.toPhysicsVector(newPosition);
+        javax.vecmath.Quat4f physicsRotation = new Quat4f(newRotation.x, newRotation.y, newRotation.z, newRotation.w);
+
+        com.bulletphysics.linearmath.Transform physicsTransform = new Transform();
+        physicsTransform.set(new javax.vecmath.Matrix4f(physicsRotation, physicsPosition, 1.0f));
+        lastHitComponent.getRigidBody().setWorldTransform(physicsTransform);
+        lastHitComponent.getRigidBody().getMotionState().setWorldTransform(physicsTransform);
+    }
+
+    private void updateComponent(float[] transform) {
+        Matrix4f newTransform = new Matrix4f();
+        newTransform = newTransform.set(transform);
+
+        Vector3f newPosition = new Vector3f();
+        newPosition = newTransform.getTranslation(newPosition);
+
+        Quaternionf newRotation = new Quaternionf();
+        newRotation = newTransform.getNormalizedRotation(newRotation);
+
+        updateComponent(newPosition, newRotation);
     }
 
     public void cleanup()
@@ -417,5 +432,9 @@ public class Viewport {
         worldShader.cleanup();
         depthFrameBuffer.cleanup();
         framebuffer.cleanup();
+    }
+
+    public PhysicsComponent getSelectedComponent() {
+        return lastHitComponent;
     }
 }

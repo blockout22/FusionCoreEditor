@@ -12,9 +12,6 @@ import imgui.flag.ImGuiConfigFlags;
 import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
 import open.gl.*;
-import open.gl.gameobject.Mesh;
-import open.gl.gameobject.MeshInstance;
-import open.gl.shaders.lights.DirLight;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -22,9 +19,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -39,6 +34,7 @@ public class FusionCoreEditor extends Plugin {
     private final ImGuiImplGl3 imGuiGl3 = new ImGuiImplGl3();
 
     private Viewport viewport;
+    private Properties properties;
 
     @Override
     public void init(CoreEngine coreEngine) {
@@ -59,7 +55,13 @@ public class FusionCoreEditor extends Plugin {
 
                 final ImGuiIO io = ImGui.getIO();
 
-                io.setIniFilename(null);
+                File layoutConfigFile = new File("Config/EditorLayout.ini");
+
+                if(!layoutConfigFile.getParentFile().exists()){
+                    layoutConfigFile.getParentFile().mkdirs();
+                }
+
+                io.setIniFilename(layoutConfigFile.toString());
                 io.addConfigFlags(ImGuiConfigFlags.NavEnableKeyboard);
                 io.addConfigFlags(ImGuiConfigFlags.DockingEnable);
                 io.setConfigViewportsNoTaskBarIcon(true);
@@ -83,6 +85,7 @@ public class FusionCoreEditor extends Plugin {
                 imGuiGl3.init("#version 330");
 
                 viewport = new Viewport(window);
+                properties = new Properties();
             }
         });
     }
@@ -94,6 +97,7 @@ public class FusionCoreEditor extends Plugin {
         ImGui.newFrame();
 
         viewport.show(renderer);
+        properties.show(viewport);
 
         ImGui.render();
         imGuiGl3.renderDrawData(ImGui.getDrawData());
@@ -129,7 +133,7 @@ public class FusionCoreEditor extends Plugin {
         deps.add("OpenGL");
         deps.add("GLFW");
         deps.add("jbullet");
-        deps.add("imgui-binding");
+        deps.add("imgui-app-1.86.10-all");
         return null;
     }
 }
