@@ -1,8 +1,10 @@
 package fusion.core.editor;
 
 import com.bulletphysics.collision.shapes.BoxShape;
+import com.bulletphysics.collision.shapes.ConvexHullShape;
 import com.bulletphysics.dynamics.RigidBody;
 import com.bulletphysics.linearmath.Transform;
+import com.bulletphysics.util.ObjectArrayList;
 import com.fusion.core.EventMouseButton;
 import com.fusion.core.GlfwInput;
 import com.fusion.core.GlfwWindow;
@@ -45,7 +47,7 @@ public class Viewport {
 
     private GlfwWindow window;
 
-    private PhysicsWorld physicsWorld;
+    public PhysicsWorld physicsWorld;
     private HitResults hitResults;
     private PhysicsComponent lastHitComponent = null;
     private float[] previousTransform = new float[16];
@@ -56,13 +58,13 @@ public class Viewport {
 
     List<Component> components = new ArrayList<>();
 
-    private PerspectiveCamera camera;
+    public PerspectiveCamera camera;
     private CameraController cameraController;
     private DirLight dirLight;
     public PointLight pointLight = new PointLight();
 
     private DepthShader depthShader;
-    private WorldShader worldShader;
+    public WorldShader worldShader;
     private FrameBuffer depthFrameBuffer, framebuffer;
 
     private WhileRendering whileDepthRendering, whileRendering;
@@ -72,8 +74,8 @@ public class Viewport {
     private Matrix4f lightSpaceMatrix = new Matrix4f();
     private Matrix4f lightProjectionMatrix = new Matrix4f();
 
-    private ImVec2 viewportPosition = new ImVec2();
-    private ImVec2 viewportSize = new ImVec2();
+    public ImVec2 viewportPosition = new ImVec2();
+    public ImVec2 viewportSize = new ImVec2();
 
     private int operation = Operation.TRANSLATE;
     private int mode = Mode.WORLD;
@@ -194,15 +196,31 @@ public class Viewport {
             instance.setPosition(x, y, z);
             instanceList.add(instance);
 
-            javax.vecmath.Vector3f halfExtents = physicsWorld.toPhysicsVector(new Vector3f(instance.getScale().x / 2, instance.getScale().y / 2, instance.getScale().z / 2));
-            BoxShape box = new BoxShape(halfExtents);
-            RigidBody rigidBody = physicsWorld.addShapeToWorld(box, 0.0f, instance.getRotation(), instance.getPosition(), 1.0f);
+//            javax.vecmath.Vector3f halfExtents = physicsWorld.toPhysicsVector(new Vector3f(instance.getScale().x / 2, instance.getScale().y / 2, instance.getScale().z / 2));
+//            BoxShape box = new BoxShape(halfExtents);
+
+            ConvexHullShape shape = createShape(instance);
+
+            RigidBody rigidBody = physicsWorld.addShapeToWorld(shape, 0.0f, instance.getRotation(), instance.getPosition(), 1.0f);
             components.add(new PhysicsComponent(rigidBody, instance));
         }
         instances.put(cube, instanceList);
     }
 
+    public PhysicsComponent addCube(){
+        MeshInstance instance = new MeshInstance(cube);
+        instances.get(cube).add(instance);
+
+        ConvexHullShape shape = createShape(instance);
+        RigidBody rigidBody = physicsWorld.addShapeToWorld(shape, 0.0f, instance.getRotation(), instance.getPosition(), 1.0f);
+        PhysicsComponent physicsComponent = new PhysicsComponent(rigidBody, instance);
+        components.add(physicsComponent);
+
+        return physicsComponent;
+    }
+
     private void raycast(){
+        System.out.println("Raycasting...");
         double[] cursorPosition = window.getCursorPosition();
 
         // Convert cursor position to be relative to the viewport window
@@ -214,7 +232,7 @@ public class Viewport {
             lastHitComponent = hitResults.hitComponent;
             lastHitComponent.setManipulate(true);
 
-            setPreviousTransform();
+            setPreviousTransform(lastHitComponent.getInstance());
         }else{
             if(lastHitComponent != null) {
                 lastHitComponent.getRigidBody().setLinearVelocity(new javax.vecmath.Vector3f(0, 0, 0));
@@ -262,6 +280,21 @@ public class Viewport {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             renderer.render(worldShader, instances, whileRendering);
+
+//            if(lastHitComponent != null){
+//                //TODO render this on it's own shader and give it a color this will also work for an outline on selected component
+//                lastHitComponent.getInstance().getMesh().enable();
+//                Map<Mesh, List<MeshInstance>> inst = new HashMap<>();
+//                ArrayList<MeshInstance> list = new ArrayList<>();
+//                list.add(lastHitComponent.getInstance());
+//                inst.put(lastHitComponent.getInstance().getMesh(), list);
+//                glCullFace(GL_BACK);
+//                Vector3f lastScale = lastHitComponent.getInstance().getScale();
+//                lastHitComponent.getInstance().setScale(new Vector3f(lastScale.x * 1.2f, lastScale.y * 1.2f, lastScale.z * 1.2f));
+//                renderer.render(worldShader, inst, whileRendering);
+//                lastHitComponent.getInstance().setScale(lastScale);
+//                lastHitComponent.getInstance().getMesh().disable();
+//            }
         }
         framebuffer.unbind();
 
@@ -410,29 +443,46 @@ public class Viewport {
         ImGui.end();
     }
 
-    public void updateComponent(Vector3f newPosition, Quaternionf newRotation, Vector3f newScale){
-        lastHitComponent.getInstance().setPosition(newPosition);
-        lastHitComponent.getInstance().setRotation(newRotation);
-        lastHitComponent.getInstance().setScale(newScale);
+    public void updateComponent(PhysicsComponent component, Vector3f newPosition, Quaternionf newRotation, Vector3f newScale){
+        component.getInstance().setPosition(newPosition);
+        component.getInstance().setRotation(newRotation);
+        component.getInstance().setScale(newScale);
 
         javax.vecmath.Vector3f physicsPosition = physicsWorld.toPhysicsVector(newPosition);
         javax.vecmath.Quat4f physicsRotation = new Quat4f(newRotation.x, newRotation.y, newRotation.z, newRotation.w);
 
         com.bulletphysics.linearmath.Transform physicsTransform = new Transform();
         physicsTransform.set(new javax.vecmath.Matrix4f(physicsRotation, physicsPosition, 1.0f));
-        lastHitComponent.getRigidBody().setWorldTransform(physicsTransform);
-        lastHitComponent.getRigidBody().getMotionState().setWorldTransform(physicsTransform);
+        component.getRigidBody().setWorldTransform(physicsTransform);
+        component.getRigidBody().getMotionState().setWorldTransform(physicsTransform);
 
-        setPreviousTransform();
+        setPreviousTransform(component.getInstance());
 
-        javax.vecmath.Vector3f halfExtents = physicsWorld.toPhysicsVector(new Vector3f(lastHitComponent.getInstance().getScale().x / 2, lastHitComponent.getInstance().getScale().y / 2, lastHitComponent.getInstance().getScale().z / 2));
-        BoxShape box = new BoxShape(halfExtents);
 
-        lastHitComponent.getRigidBody().setCollisionShape(box);
+//        javax.vecmath.Vector3f halfExtents = physicsWorld.toPhysicsVector(new Vector3f(lastHitComponent.getInstance().getScale().x / 2, lastHitComponent.getInstance().getScale().y / 2, lastHitComponent.getInstance().getScale().z / 2));
+//        BoxShape box = new BoxShape(halfExtents);
+
+        ConvexHullShape shape = createShape(component.getInstance());
+        component.getRigidBody().setCollisionShape(shape);
     }
 
-    private void setPreviousTransform() {
-        MeshInstance instance = hitResults.hitComponent.getInstance();
+    private ConvexHullShape createShape(MeshInstance instance){
+        float[] vertices = instance.getMesh().getModel().getVertices();
+        ObjectArrayList<javax.vecmath.Vector3f> points = new ObjectArrayList<>();
+        for (int i = 0; i < vertices.length; i += 3) {
+            javax.vecmath.Vector3f point = (new javax.vecmath.Vector3f(vertices[i], vertices[i + 1], vertices[i + 2]));
+            point.x *= instance.getScale().x;
+            point.y *= instance.getScale().y;
+            point.z *= instance.getScale().z;
+            points.add(point);
+        }
+        ConvexHullShape shape = new ConvexHullShape(points);
+
+        return shape;
+    }
+
+    private void setPreviousTransform(MeshInstance instance) {
+//        MeshInstance instance = hitResults.hitComponent.getInstance();
         Matrix4f matrix = new Matrix4f();
         matrix.translate(instance.getPosition());
         matrix.rotate(instance.getRotation());
@@ -454,7 +504,7 @@ public class Viewport {
         Vector3f newScale = new Vector3f();
         newScale = newTransform.getScale(newScale);
 
-        updateComponent(newPosition, newRotation, newScale);
+        updateComponent(getSelectedComponent(), newPosition, newRotation, newScale);
     }
 
     public void cleanup()

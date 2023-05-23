@@ -5,7 +5,6 @@ import imgui.extension.imguizmo.ImGuizmo;
 import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiInputTextFlags;
 import open.gl.gameobject.MeshInstance;
-import open.gl.gameobject.PhysicsComponent;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -56,7 +55,7 @@ public class Properties {
                     Vector3f newScale = new Vector3f();
                     newModelMatrix.getScale(newScale);
 
-                    viewport.updateComponent(newPos, newRot, newScale);
+                    viewport.updateComponent(viewport.getSelectedComponent(), newPos, newRot, newScale);
                 }
             }
         }

@@ -35,6 +35,7 @@ public class FusionCoreEditor extends Plugin {
 
     private Viewport viewport;
     private Properties properties;
+    private Toolbar toolbar;
 
     @Override
     public void init(CoreEngine coreEngine) {
@@ -86,6 +87,7 @@ public class FusionCoreEditor extends Plugin {
 
                 viewport = new Viewport(window);
                 properties = new Properties();
+                toolbar = new Toolbar(window);
             }
         });
     }
@@ -98,6 +100,7 @@ public class FusionCoreEditor extends Plugin {
 
         viewport.show(renderer);
         properties.show(viewport);
+        toolbar.show(viewport);
 
         ImGui.render();
         imGuiGl3.renderDrawData(ImGui.getDrawData());
