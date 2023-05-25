@@ -60,7 +60,7 @@ public class Toolbar {
                     //spawn in new item in the viewport
                     if(spawnedInstance != null){
                        Vector3f mouseRay = getMouseRay(viewport.camera, viewport.worldShader);
-//                        spawnedInstance.getInstance().setPosition(mouseRay);
+                       mouseRay.floor();
                         viewport.updateComponent(spawnedInstance, mouseRay, spawnedInstance.getInstance().getRotation(), new Vector3f(1, 1, 1));
                     }else {
                         //TODO check what the selectedObject is and spawned it based on that

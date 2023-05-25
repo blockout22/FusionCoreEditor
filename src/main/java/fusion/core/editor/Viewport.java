@@ -9,6 +9,7 @@ import com.fusion.core.EventMouseButton;
 import com.fusion.core.GlfwInput;
 import com.fusion.core.GlfwWindow;
 import com.fusion.core.engine.Global;
+import fusion.core.editor.map.SceneMap;
 import imgui.ImColor;
 import imgui.ImGui;
 import imgui.ImVec2;
@@ -28,6 +29,7 @@ import open.gl.shaders.OpenGlShader;
 import open.gl.shaders.WorldShader;
 import open.gl.shaders.lights.DirLight;
 import open.gl.shaders.lights.PointLight;
+import open.gl.shaders.material.BoxMaterial;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -86,6 +88,11 @@ public class Viewport {
     int flags = NoCollapse | NoMove;
     private float angle = 0;
 
+    private SceneMap map = new SceneMap();
+
+    //Materials
+    private BoxMaterial boxMaterial;
+
     public Viewport(GlfwWindow window) {
         this.window = window;
         physicsWorld = new PhysicsWorld();
@@ -117,6 +124,9 @@ public class Viewport {
 
         worldShader.bind();
         OpenGlShader.loadMatrix4f(worldShader.getProjection(), camera.getProjectionMatrix());
+
+        //Create Materials
+        boxMaterial = new BoxMaterial(worldShader);
 
         GlfwInput.setOnMouseButton(new EventMouseButton() {
             @Override
@@ -191,7 +201,7 @@ public class Viewport {
             int y = r.nextInt(distance) - (distance / 2);
             int z = r.nextInt(distance) - (distance / 2);
 
-            MeshInstance instance = new MeshInstance(cube);
+            MeshInstance instance = new MeshInstance(cube, boxMaterial);
 
             instance.setPosition(x, y, z);
             instanceList.add(instance);
@@ -208,7 +218,7 @@ public class Viewport {
     }
 
     public PhysicsComponent addCube(){
-        MeshInstance instance = new MeshInstance(cube);
+        MeshInstance instance = new MeshInstance(cube, boxMaterial);
         instances.get(cube).add(instance);
 
         ConvexHullShape shape = createShape(instance);
@@ -220,7 +230,6 @@ public class Viewport {
     }
 
     private void raycast(){
-        System.out.println("Raycasting...");
         double[] cursorPosition = window.getCursorPosition();
 
         // Convert cursor position to be relative to the viewport window
@@ -278,6 +287,8 @@ public class Viewport {
             glEnable(GL_CULL_FACE);
             glCullFace(GL_BACK);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+//            List<MeshInstance> meshInstances = sceneMap.getAllMeshInstances();
 
             renderer.render(worldShader, instances, whileRendering);
 
