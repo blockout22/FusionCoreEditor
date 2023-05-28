@@ -3,7 +3,6 @@ package fusion.core.editor;
 import com.fusion.core.GlfwWindow;
 import imgui.ImGui;
 import open.gl.PerspectiveCamera;
-import open.gl.gameobject.MeshInstance;
 import open.gl.gameobject.PhysicsComponent;
 import open.gl.physics.HitResults;
 import open.gl.shaders.WorldShader;

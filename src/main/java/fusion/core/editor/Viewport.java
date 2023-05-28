@@ -1,6 +1,5 @@
 package fusion.core.editor;
 
-import com.bulletphysics.collision.shapes.BoxShape;
 import com.bulletphysics.collision.shapes.ConvexHullShape;
 import com.bulletphysics.dynamics.RigidBody;
 import com.bulletphysics.linearmath.Transform;
@@ -9,7 +8,6 @@ import com.fusion.core.EventMouseButton;
 import com.fusion.core.GlfwInput;
 import com.fusion.core.GlfwWindow;
 import com.fusion.core.engine.Global;
-import fusion.core.editor.map.SceneMap;
 import imgui.ImColor;
 import imgui.ImGui;
 import imgui.ImVec2;
@@ -87,8 +85,6 @@ public class Viewport {
 
     int flags = NoCollapse | NoMove;
     private float angle = 0;
-
-    private SceneMap map = new SceneMap();
 
     //Materials
     private BoxMaterial boxMaterial;
